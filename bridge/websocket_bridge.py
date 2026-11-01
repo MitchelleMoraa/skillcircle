@@ -117,16 +117,16 @@ async def handle_connection(websocket):
 
 
 async def main():
+    port = int(os.environ.get("PORT", "8765"))
 
     print("SkillCircle WebSocket Bridge is running...")
-    print("WebSocket address: ws://localhost:8765")
+    print(f"Listening on port: {port}")
 
     async with websockets.serve(
         handle_connection,
         "0.0.0.0",
-        8765
+        port
     ):
-
         await asyncio.Future()
 
 
