@@ -51,7 +51,7 @@ function App() {
 
     setConnectionStatus('Connecting...')
 
-    const newSocket = new WebSocket('ws://localhost:8765')
+    const newSocket = new WebSocket('wss://skillcircle-dbtb.onrender.com')
 
     // Connection established
     newSocket.onopen = () => {
