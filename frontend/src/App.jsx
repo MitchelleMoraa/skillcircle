@@ -209,9 +209,9 @@ function App() {
       return
     }
 
-    const registerSocket = new WebSocket(
-      'ws://localhost:8765'
-    )
+   const registerSocket = new WebSocket(
+  'wss://skillcircle-dbtb.onrender.com'
+)
 
     registerSocket.onopen = () => {
 

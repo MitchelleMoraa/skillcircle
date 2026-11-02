@@ -5,12 +5,23 @@ import bcrypt
 
 # Connect to PostgreSQL
 def get_connection():
+    from urllib.parse import urlparse, unquote
+
     database_url = os.getenv("DATABASE_URL")
 
     if not database_url:
         raise Exception("DATABASE_URL is not configured.")
 
-    return psycopg2.connect(database_url)
+    parsed = urlparse(database_url)
+
+    return psycopg2.connect(
+        dbname=parsed.path.lstrip("/"),
+        user=unquote(parsed.username),
+        password=unquote(parsed.password),
+        host=parsed.hostname,
+        port=parsed.port or 5432,
+        sslmode="require"
+    )
 
 
 # Register a new user
