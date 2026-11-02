@@ -11,36 +11,32 @@ function App() {
 
   // Login information
   const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [authMode, setAuthMode] = useState('login')
   const [server, setServer] = useState('A')
 
   // WebSocket connection
   const [socket, setSocket] = useState(null)
-  const [connectionStatus, setConnectionStatus] = useState('Disconnected')
+  const [connectionStatus, setConnectionStatus] = useState("")
 
   // Chat information
   const [message, setMessage] = useState('')
   const [messages, setMessages] = useState([])
 
-  // Group members (demonstration list)
-  const members = [
-    { name: 'Michelle', server: 'A' },
-    { name: 'Peter', server: 'A' },
-    { name: 'Gertrude', server: 'B' },
-    { name: 'James', server: 'B' },
-    { name: 'Melville', server: 'B' }
-  ]
+  // Group members received from the Python backend
+  const [members, setMembers] = useState([])
 
 
   // =====================================
-  // CONNECT USER TO PYTHON BACKEND
+  // USER LOGIN
   // =====================================
 
   function handleLogin(event) {
 
     event.preventDefault()
 
-    if (!username.trim()) {
-      alert('Please enter your username.')
+    if (!username.trim() || !password) {
+      alert('Enter your username and password.')
       return
     }
 
@@ -51,23 +47,24 @@ function App() {
 
     setConnectionStatus('Connecting...')
 
-    const newSocket = new WebSocket('wss://skillcircle-dbtb.onrender.com')
+    const newSocket = new WebSocket(
+      'ws://localhost:8765'
+    )
 
-    // Connection established
     newSocket.onopen = () => {
 
-      console.log('WebSocket connection established.')
-
       newSocket.send(JSON.stringify({
-        type: 'connect',
+        type: 'login',
         username: username.trim(),
+        password: password,
         server: server
       }))
 
     }
 
 
-    // Receive messages from Python
+    // RECEIVE DATA FROM PYTHON
+
     newSocket.onmessage = (event) => {
 
       const data = JSON.parse(event.data)
@@ -75,19 +72,51 @@ function App() {
       console.log('Message received:', data)
 
 
-      // Successful connection
-      if (data.type === 'connected') {
+      // REGISTERED GROUP MEMBERS
+
+      if (data.type === 'group_members') {
+
+        setMembers(data.members || [])
+
+      }
+
+
+      // PREVIOUS MESSAGE HISTORY
+
+      else if (data.type === 'history') {
+
+        setMessages(
+          data.messages.map((msg) => ({
+            id: msg.message_id,
+            username: msg.username,
+            server: msg.server || 'Network',
+            message: msg.message,
+            time: new Date(msg.timestamp).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit'
+            })
+          }))
+        )
+
+      }
+
+
+      // SUCCESSFUL CONNECTION
+
+      else if (data.type === 'connected') {
 
         setSocket(newSocket)
         setConnectionStatus('Connected')
         setPage('chat')
+        setPassword('')
 
         console.log(data.message)
 
       }
 
 
-      // Incoming chat message
+      // NEW CHAT MESSAGE
+
       else if (data.type === 'chat') {
 
         setMessages(previousMessages => [
@@ -110,7 +139,8 @@ function App() {
       }
 
 
-      // Server error
+      // SERVER ERROR
+
       else if (data.type === 'error') {
 
         alert(data.message)
@@ -122,7 +152,8 @@ function App() {
       }
 
 
-      // Server disconnected
+      // SERVER DISCONNECTED
+
       else if (data.type === 'disconnect') {
 
         alert(data.message)
@@ -134,28 +165,89 @@ function App() {
     }
 
 
-    // Connection error
+    // CONNECTION ERROR
+
     newSocket.onerror = () => {
 
       console.error('WebSocket connection failed.')
 
       setConnectionStatus('Connection failed')
 
-      alert(
-        'Could not connect to SkillCircle. Make sure both Python servers and the WebSocket bridge are running.'
-      )
+      alert('Could not connect to SkillCircle.')
 
     }
 
 
-    // Connection closed
-    newSocket.onclose = () => {
+    // CONNECTION CLOSED
 
-      console.log('WebSocket connection closed.')
+    newSocket.onclose = () => {
 
       setConnectionStatus('Disconnected')
 
       setSocket(null)
+
+    }
+
+  }
+
+
+  // =====================================
+  // USER REGISTRATION
+  // =====================================
+
+  function handleRegister(event) {
+
+    event.preventDefault()
+
+    if (!username.trim() || !password) {
+      alert('Enter your username and password.')
+      return
+    }
+
+    if (password.length < 8) {
+      alert('Password must contain at least 8 characters.')
+      return
+    }
+
+    const registerSocket = new WebSocket(
+      'ws://localhost:8765'
+    )
+
+    registerSocket.onopen = () => {
+
+      registerSocket.send(JSON.stringify({
+        type: 'register',
+        username: username.trim(),
+        password: password
+      }))
+
+    }
+
+    registerSocket.onmessage = (event) => {
+
+      const data = JSON.parse(event.data)
+
+      if (data.type === 'register_result') {
+
+        alert(data.message)
+
+        if (data.success) {
+
+          setAuthMode('login')
+
+          setPassword('')
+
+        }
+
+        registerSocket.close()
+
+      }
+
+    }
+
+    registerSocket.onerror = () => {
+
+      alert('Could not connect to SkillCircle.')
 
     }
 
@@ -207,6 +299,7 @@ function App() {
 
     setSocket(null)
     setConnectionStatus('Disconnected')
+    setMessages([])
     setPage('home')
 
   }
@@ -353,9 +446,7 @@ function App() {
 
                   <span>● Open group</span>
 
-                  <button
-                    onClick={() => setPage('login')}
-                  >
+                  <button onClick={() => setPage('login')}>
                     Join group →
                   </button>
 
@@ -446,7 +537,7 @@ function App() {
 
 
   // =====================================
-  // LOGIN AND SERVER SELECTION PAGE
+  // LOGIN AND REGISTRATION PAGE
   // =====================================
 
   if (page === 'login') {
@@ -465,15 +556,24 @@ function App() {
             JAVASCRIPT LEARNERS
           </p>
 
-          <h1>Join the conversation.</h1>
+          <h1>
+            {authMode === 'login'
+              ? 'Welcome back!'
+              : 'Create your account.'}
+          </h1>
 
           <p className="login-description">
-            Enter your username and choose a server
-            to connect with other JavaScript learners.
+            {authMode === 'login'
+              ? 'Enter your account details and choose a server to continue.'
+              : 'Create your SkillCircle account to join the conversation.'}
           </p>
 
 
-          <form onSubmit={handleLogin}>
+          <form onSubmit={
+            authMode === 'login'
+              ? handleLogin
+              : handleRegister
+          }>
 
             <label>Username</label>
 
@@ -486,32 +586,78 @@ function App() {
             />
 
 
-            <label>Select your server</label>
+            <label>Password</label>
 
-            <select
-              value={server}
-              onChange={(event) => setServer(event.target.value)}
-            >
+            <input
+              type="password"
+              placeholder="Enter your password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              minLength={8}
+            />
 
-              <option value="A">
-                Server A — Port 9001
-              </option>
 
-              <option value="B">
-                Server B — Port 9002
-              </option>
+            {authMode === 'login' && (
 
-            </select>
+              <>
+                <label>Select your server</label>
+
+                <select
+                  value={server}
+                  onChange={(event) => setServer(event.target.value)}
+                >
+
+                  <option value="A">
+                    Server A — Port 9001
+                  </option>
+
+                  <option value="B">
+                    Server B — Port 9002
+                  </option>
+
+                </select>
+
+              </>
+
+            )}
 
 
             <button
               type="submit"
               className="connect-button"
             >
-              Connect to SkillCircle →
+
+              {authMode === 'login'
+                ? 'Login to SkillCircle →'
+                : 'Create Account →'}
+
             </button>
 
           </form>
+
+
+          <button
+            type="button"
+            className="back-button"
+            onClick={() => {
+
+              setAuthMode(
+                authMode === 'login'
+                  ? 'register'
+                  : 'login'
+              )
+
+              setPassword('')
+
+            }}
+          >
+
+            {authMode === 'login'
+              ? 'New here? Create an account'
+              : 'Already registered? Login'}
+
+          </button>
 
 
           <button
@@ -521,9 +667,12 @@ function App() {
             ← Back to groups
           </button>
 
-          <p className="connection-status-text">
-            {connectionStatus}
-          </p>
+
+          {connectionStatus && (
+            <p className="connection-status-text">
+              {connectionStatus}
+            </p>
+          )}
 
         </div>
 
@@ -745,36 +894,27 @@ function App() {
         <h3>Group Members</h3>
 
         <p className="member-count">
-          5 members
+          {members.length} {members.length === 1 ? 'member' : 'members'}
         </p>
 
+        {members.length === 0 ? (
+          <p>No members yet.</p>
+        ) : (
+          members.map((member) => (
+            <div
+              className="member-item"
+              key={member.username}
+            >
+              <div className="member-avatar">
+                {member.username.charAt(0).toUpperCase()}
+              </div>
 
-        {members.map((member) => (
-
-          <div
-            className="member-item"
-            key={member.name}
-          >
-
-            <div className="member-avatar">
-              {member.name.charAt(0)}
+              <div className="member-details">
+                <strong>{member.username}</strong>
+              </div>
             </div>
-
-            <div className="member-details">
-
-              <strong>
-                {member.name}
-              </strong>
-
-              <span>
-                Server {member.server}
-              </span>
-
-            </div>
-
-          </div>
-
-        ))}
+          ))
+        )}
 
       </aside>
 
